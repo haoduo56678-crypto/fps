@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>FPS Aim Trainer</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Segoe UI',Arial,sans-serif; }
+canvas { display:block; }
+
+#topbar {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-around; align-items:center;
+    padding:12px 30px;
+    background:linear-gradient(rgba(0,0,0,0.7),transparent);
+    pointer-events:none; z-index:10;
+}
+.stat { text-align:center; }
+.stat-label { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:2px; }
+.stat-value { font-size:26px; font-weight:700; color:#fff; }
+#timer-val { color:#ff4655; }
+#score-val { color:#00e5ff; }
+#acc-val   { color:#69ff47; }
+#streak-val{ color:#ffd700; }
+
+/* Crosshair */
+#crosshair {
+    position:fixed; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    pointer-events:none; z-index:15;
+    width:24px; height:24px;
+}
+.ch { position:absolute; background:rgba(255,255,255,0.92); }
+
+/* Hit marker */
+#hitmarker {
+    position:fixed; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    pointer-events:none; z-index:16;
+    opacity:0; transition:opacity 0.05s;
+}
+
+/* Muzzle flash */
+#flash {
+    position:fixed; inset:0;
+    background:rgba(255,200,80,0.07);
+    pointer-events:none; z-index:14;
+    opacity:0;
+}
+
+/* Lock notice */
+#lock-notice {
+    position:fixed; bottom:24px; left:50%;
+    transform:translateX(-50%);
+    color:#555; font-size:12px; letter-spacing:2px;
+    pointer-events:none; z-index:11;
+    transition:opacity 0.3s;
+}
+
+/* Overlay */
+#overlay {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.92);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:26px; z-index:30;
+}
+#overlay h1 {
+    font-size:44px; letter-spacing:8px; color:#ff4655;
+    text-shadow:0 0 40px rgba(255,70,85,0.6);
+}
+#overlay .sub { color:#555; font-size:13px; letter-spacing:2px; }
+
+.mode-row { display:flex; gap:10px; }
+.mode-btn {
+    padding:8px 20px; border:2px solid #333;
+    background:transparent; color:#777;
+    border-radius:6px; cursor:pointer;
+    font-size:12px; letter-spacing:1px;
+    text-transform:uppercase; transition:all 0.15s;
+}
+.mode-btn.active,.mode-btn:hover {
+    border-color:#ff4655; color:#fff;
+    background:rgba(255,70,85,0.12);
+}
+
+#result-grid {
+    display:none; grid-template-columns:1fr 1fr;
+    gap:14px; padding:26px 40px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px; min-width:300px;
+}
+.ri { text-align:center; }
+.ri .rl { font-size:10px; color:#666; text-transform:uppercase; letter-spacing:1px; }
+.ri .rv { font-size:28px; font-weight:700; margin-top:4px; }
+
+#play-btn {
+    padding:16px 60px; font-size:18px; font-weight:700;
+    letter-spacing:3px; text-transform:uppercase;
+    background:#ff4655; color:#fff;
+    border:none; border-radius:8px; cursor:pointer;
+    box-shadow:0 0 30px rgba(255,70,85,0.3);
+    transition:all 0.15s;
+}
+#play-btn:hover { background:#ff6070; transform:scale(1.05); }
+
+/* Sensitivity row in overlay */
+.sens-row {
+    display:flex; align-items:center; gap:14px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    padding:14px 22px; border-radius:8px; min-width:340px;
+}
+.sens-label { color:#aaa; font-size:11px; letter-spacing:1px; text-transform:uppercase; flex-shrink:0; }
+.sens-row input[type=range] { flex:1; accent-color:#ff4655; cursor:pointer; height:4px; }
+.sens-val { color:#ff4655; font-size:16px; font-weight:700; min-width:32px; text-align:right; }
+.sens-tag { color:#555; font-size:10px; letter-spacing:1px; flex-shrink:0; }
+
+/* Gear button */
+#settings-btn {
+    position:fixed; bottom:20px; right:20px;
+    width:40px; height:40px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px; display:none;
+    align-items:center; justify-content:center;
+    font-size:20px; cursor:pointer; color:#777;
+    z-index:25; transition:all 0.15s; user-select:none;
+}
+#settings-btn:hover { background:rgba(255,70,85,0.2); color:#fff; border-color:#ff4655; }
+
+/* Settings panel */
+#settings-panel {
+    position:fixed; bottom:70px; right:20px;
+    background:#0e0e1e; border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px; padding:20px 22px;
+    z-index:26; display:none; flex-direction:column;
+    gap:14px; min-width:270px;
+    box-shadow:0 8px 40px rgba(0,0,0,0.7);
+}
+.sp-title { color:#fff; font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+.sp-divider { border:none; border-top:1px solid rgba(255,255,255,0.07); margin:0; }
+.sp-row { display:flex; flex-direction:column; gap:8px; }
+.sp-row label { color:#888; font-size:11px; letter-spacing:1px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; }
+.sp-row label em { color:#ff4655; font-style:normal; font-size:14px; font-weight:700; }
+.sp-row input[type=range] { width:100%; accent-color:#ff4655; cursor:pointer; }
+.sp-row .sp-presets { display:flex; gap:6px; }
+.sp-row .sp-presets button {
+    flex:1; padding:5px; font-size:11px; border:1px solid #333;
+    background:transparent; color:#777; border-radius:4px; cursor:pointer;
+    transition:all 0.12s; letter-spacing:0.5px;
+}
+.sp-row .sp-presets button:hover { border-color:#ff4655; color:#fff; background:rgba(255,70,85,0.1); }
+#sp-close {
+    padding:8px; background:rgba(255,70,85,0.12);
+    border:1px solid #ff4655; color:#ff4655;
+    border-radius:6px; cursor:pointer; font-size:12px;
+    letter-spacing:2px; text-transform:uppercase; transition:all 0.15s;
+}
+#sp-close:hover { background:rgba(255,70,85,0.28); }
+
+/* Score popup */
+.score-pop {
+    position:fixed; font-size:18px; font-weight:700;
+    color:#69ff47; text-shadow:0 0 12px #69ff47;
+    pointer-events:none; z-index:20;
+    animation:popUp 0.7s ease-out forwards;
+    transform:translate(-50%,-50%);
+}
+@keyframes popUp {
+    from { opacity:1; transform:translate(-50%,-50%); }
+    to   { opacity:0; transform:translate(-50%,-250%); }
+}
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="topbar">
+    <div class="stat"><div class="stat-label">时间</div><div class="stat-value" id="timer-val">60</div></div>
+    <div class="stat"><div class="stat-label">分数</div><div class="stat-value" id="score-val">0</div></div>
+    <div class="stat"><div class="stat-label">准确率</div><div class="stat-value" id="acc-val">--%</div></div>
+    <div class="stat"><div class="stat-label">连击</div><div class="stat-value" id="streak-val">0</div></div>
+</div>
+
+<!-- Crosshair: gap style -->
+<div id="crosshair">
+    <div class="ch" style="left:11px;top:0;width:2px;height:8px;"></div>
+    <div class="ch" style="left:11px;bottom:0;width:2px;height:8px;"></div>
+    <div class="ch" style="top:11px;left:0;width:8px;height:2px;"></div>
+    <div class="ch" style="top:11px;right:0;width:8px;height:2px;"></div>
+    <div class="ch" style="top:11px;left:11px;width:2px;height:2px;"></div>
+</div>
+
+<!-- Hit marker (4 diagonal lines) -->
+<div id="hitmarker">
+    <svg width="22" height="22" viewBox="0 0 22 22">
+        <line x1="0" y1="0" x2="6" y2="6" stroke="#ff4655" stroke-width="2" stroke-linecap="round"/>
+        <line x1="22" y1="0" x2="16" y2="6" stroke="#ff4655" stroke-width="2" stroke-linecap="round"/>
+        <line x1="0" y1="22" x2="6" y2="16" stroke="#ff4655" stroke-width="2" stroke-linecap="round"/>
+        <line x1="22" y1="22" x2="16" y2="16" stroke="#ff4655" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+</div>
+
+<div id="flash"></div>
+<div id="lock-notice">点击屏幕锁定鼠标 &nbsp;|&nbsp; ESC 解锁并调整设置</div>
+
+<!-- Gear button (shown during game) -->
+<div id="settings-btn" title="设置 (ESC后点击)">⚙</div>
+
+<!-- In-game settings panel -->
+<div id="settings-panel">
+    <div class="sp-title">⚙ &nbsp;灵敏度设置</div>
+    <hr class="sp-divider">
+    <div class="sp-row">
+        <label>灵敏度 <em id="sens-display-ig">1.00</em></label>
+        <input type="range" id="sens-slider-ig" min="0.10" max="5.00" step="0.01" value="1.00">
+        <div class="sp-presets">
+            <button data-sens="0.30">0.30</button>
+            <button data-sens="0.60">0.60</button>
+            <button data-sens="1.00">1.00</button>
+            <button data-sens="2.00">2.00</button>
+            <button data-sens="3.50">3.50</button>
+        </div>
+    </div>
+    <hr class="sp-divider">
+    <div class="sp-row">
+        <label>视野角 (FOV) <em id="fov-display-ig">75°</em></label>
+        <input type="range" id="fov-slider-ig" min="60" max="110" value="75">
+    </div>
+    <button id="sp-close">关闭</button>
+</div>
+
+<!-- Overlay -->
+<div id="overlay">
+    <h1>FPS AIM TRAINER</h1>
+    <div class="sub">训练你的FPS瞄准能力</div>
+
+    <div class="mode-row">
+        <button class="mode-btn active" data-mode="normal">标准模式</button>
+        <button class="mode-btn" data-mode="small">精准模式</button>
+        <button class="mode-btn" data-mode="moving">移动靶</button>
+        <button class="mode-btn" data-mode="flick">闪现靶</button>
+    </div>
+
+    <div class="sens-row">
+        <span class="sens-label">灵敏度</span>
+        <span class="sens-tag">慢</span>
+        <input type="range" id="sens-slider" min="0.10" max="5.00" step="0.01" value="1.00">
+        <span class="sens-tag">快</span>
+        <span class="sens-val" id="sens-display">1.00</span>
+    </div>
+
+    <div id="result-grid">
+        <div class="ri"><div class="rl">最终分数</div><div class="rv" id="r-score" style="color:#00e5ff">0</div></div>
+        <div class="ri"><div class="rl">准确率</div><div class="rv" id="r-acc" style="color:#69ff47">0%</div></div>
+        <div class="ri"><div class="rl">命中数</div><div class="rv" id="r-hits" style="color:#ffd700">0</div></div>
+        <div class="ri"><div class="rl">最高连击</div><div class="rv" id="r-streak" style="color:#ff4655">0</div></div>
+    </div>
+
+    <button id="play-btn">开始训练</button>
+</div>
+
+<script>
+// ── SCENE ──────────────────────────────────────────────────────
+const scene    = new THREE.Scene();
+scene.background = new THREE.Color(0x08080f);
+scene.fog        = new THREE.Fog(0x08080f, 25, 55);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.01, 200);
+camera.position.set(0, 1.7, 0);
+scene.add(camera);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.insertBefore(renderer.domElement, document.body.firstChild);
+renderer.domElement.style.position = 'fixed';
+renderer.domElement.style.inset = '0';
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── LIGHTS ─────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x111133, 2));
+const dLight = new THREE.DirectionalLight(0x6666ff, 0.6);
+dLight.position.set(5, 10, -5);
+scene.add(dLight);
+
+// ── ROOM ───────────────────────────────────────────────────────
+// Floor
+const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshLambertMaterial({ color: 0x0b0b18 })
+);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const grid = new THREE.GridHelper(60, 60, 0x18183a, 0x18183a);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// Walls (back, left, right, ceiling)
+function wall(w, h, px, py, pz, ry, color = 0x0a0a15) {
+    const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshLambertMaterial({ color, side: THREE.FrontSide })
+    );
+    m.position.set(px, py, pz);
+    if (ry) m.rotation.y = ry;
+    scene.add(m);
+}
+wall(60, 10,  0, 5, -25, 0);
+wall(60, 10, -25, 5,  0,  Math.PI/2);
+wall(60, 10,  25, 5,  0, -Math.PI/2);
+wall(60, 60,  0, 10,  0,  0);
+scene.children[scene.children.length-1].rotation.x = Math.PI/2;
+
+// 参考物体 (箱子)
+function addBox(x, y, z, w, h, d, color = 0x444444) {
+    const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshLambertMaterial({ color })
+    );
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    return mesh;
+}
+addBox(-6, 1, -12, 2, 2.2, 2, 0x664444);
+addBox(6, 1, -18, 2.5, 2, 2.5, 0x446644);
+addBox(0, 1, -30, 2, 2.5, 2, 0x444466);
+
+// ── PLAYER & MOVEMENT ─────────────────────────────────────────
+let playerPos = new THREE.Vector3(0, 0, 0);
+let playerVel = new THREE.Vector3(0, 0, 0);
+const playerSpeed = 0.025;
+let isCrouching = false;
+let currentEyeHeight = 1.7;
+const eyeHeightStand = 1.7;
+const eyeHeightCrouch = 0.9;
+const crouchSpeed = 0.05;
+let isJumping = false;
+let verticalVel = 0;
+const jumpForce = 0.4;
+const gravityUp = 0.04;
+const gravityDown = 0.01;
+const keys = {};
+
+// ── KNIFE SYSTEM - 状态机系统 ────────────────────────────────
+let slashState = 'idle';  // idle, windup, slash, impact, recovery
+let slashStartTime = 0;
+let slashAnimTimings = {
+    windupEnd: 80,      // Wind-up阶段：0-80ms
+    slashEnd: 180,      // Slash阶段：80-180ms
+    impactEnd: 230,     // Impact阶段：180-230ms（仅命中时）
+    recoveryEnd: 420    // Recovery阶段：230-420ms
+};
+let hasHitThisSlash = false;  // 防止重复命中
+let impactStartTime = 0;
+
+// 冷却系统
+let slashCooldown = 0;
+const slashCooldownDuration = 600;  // 600ms冷却
+
+// 命中反馈
+let cameraShakeTime = 0;
+const cameraShakeDuration = 100;
+const cameraShakeIntensity = 0.03;
+let cameraShakeInitialPos = new THREE.Vector3();
+
+// Idle位置和旋转（刀在屏幕右下角）
+const knifeIdlePose = {
+    pos: { x: 0.45, y: -0.35, z: -0.65 },
+    rot: { x: 5 * Math.PI / 180, y: 0, z: -15 * Math.PI / 180 }
+};
+
+// ── WEAPON SYSTEM ───────────────────────────────────────────────
+let currentWeapon = 'knife';
+let isWeaponSwitching = false;
+let switchProgress = 0;
+const switchDuration = 300;
+
+// ── WEAPON VIEWMODELS ──────────────────────────────────────────
+const gunGroup = new THREE.Group();
+const knifeGroup = new THREE.Group();
+camera.add(gunGroup);
+camera.add(knifeGroup);
+knifeGroup.visible = true;  // Start with knife
+gunGroup.visible = false;
+
+const gunMat  = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
+const slideM  = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+
+// Body
+const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.38), gunMat);
+body.position.set(0.22, -0.20, -0.42);
+gunGroup.add(body);
+
+// Slide
+const slide = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.34), slideM);
+slide.position.set(0.22, -0.155, -0.41);
+gunGroup.add(slide);
+
+// Barrel
+const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.22), slideM);
+barrel.position.set(0.22, -0.16, -0.64);
+gunGroup.add(barrel);
+
+// Trigger guard
+const tg = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.04, 0.08), gunMat);
+tg.position.set(0.22, -0.245, -0.385);
+gunGroup.add(tg);
+
+// Muzzle light (off by default)
+const muzzleLight = new THREE.PointLight(0xff8844, 0, 2);
+muzzleLight.position.set(0.22, -0.16, -0.78);
+camera.add(muzzleLight);
+
+// Knife blade (optimized size and position)
+const knifeBladeMat = new THREE.MeshLambertMaterial({ color: 0xcccccc, emissive: 0x333333 });
+const knifeBlade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.6), knifeBladeMat);
+knifeBlade.position.set(0.25, -0.25, -0.35);
+knifeGroup.add(knifeBlade);
+
+// Knife handle
+const knifeHandleMat = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+const knifeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.15), knifeHandleMat);
+knifeHandle.position.set(0.25, -0.25, -0.05);
+knifeGroup.add(knifeHandle);
+
+// Knife guard (more refined)
+const knifeGuardMat = new THREE.MeshLambertMaterial({ color: 0xaa7744 });
+const knifeGuard = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.03), knifeGuardMat);
+knifeGuard.position.set(0.25, -0.25, 0.02);
+knifeGroup.add(knifeGuard);
+
+// ── TARGETS ────────────────────────────────────────────────────
+const targets     = [];
+const targetObjs  = [];
+let flickTimeout  = null;
+
+function targetSize() {
+    if (currentMode === 'small')  return 0.10 + Math.random() * 0.08;
+    if (currentMode === 'flick')  return 0.18 + Math.random() * 0.12;
+    return 0.18 + Math.random() * 0.16;
+}
+
+function spawnTarget() {
+    if (!gameActive) return;
+    const r    = targetSize();
+    const geo  = new THREE.SphereGeometry(r, 20, 20);
+    const hue  = Math.random() < 0.5 ? 0xff3344 : 0xff5520;
+    const mat  = new THREE.MeshLambertMaterial({
+        color: hue, emissive: hue, emissiveIntensity: 0.35
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    const x = (Math.random() - 0.5) * 16;
+    const y = 0.6 + Math.random() * 2.8;
+    const z = -6 - Math.random() * 14;
+    mesh.position.set(x, y, z);
+
+    const pl = new THREE.PointLight(hue, 2, r * 6);
+    mesh.add(pl);
+    mesh.userData.r  = r;
+    mesh.userData.vx = (Math.random() - 0.5) * 0.025;
+    mesh.userData.vy = (Math.random() - 0.5) * 0.018;
+
+    scene.add(mesh);
+    targetObjs.push(mesh);
+
+    if (currentMode === 'flick') {
+        flickTimeout = setTimeout(() => killTarget(mesh), 800 + Math.random() * 600);
+    }
+}
+
+function killTarget(mesh) {
+    scene.remove(mesh);
+    const i = targetObjs.indexOf(mesh);
+    if (i !== -1) targetObjs.splice(i, 1);
+    if (gameActive) setTimeout(spawnTarget, currentMode === 'flick' ? 400 : 60);
+}
+
+function clearTargets() {
+    clearTimeout(flickTimeout);
+    [...targetObjs].forEach(m => scene.remove(m));
+    targetObjs.length = 0;
+}
+
+// ── POINTER LOCK ───────────────────────────────────────────────
+let yaw = 0, pitch = 0;
+let isLocked = false;
+// 1.0 = 30 cm/360 (normal). formula: rad/px = val × (2π / (30 × 37.795))
+let sens = 1.0 * 0.00554;
+const lockNotice = document.getElementById('lock-notice');
+
+renderer.domElement.addEventListener('click', () => { if (gameActive) renderer.domElement.requestPointerLock(); });
+document.addEventListener('pointerlockchange', () => {
+    isLocked = document.pointerLockElement === renderer.domElement;
+    lockNotice.style.opacity = (gameActive && !isLocked) ? '1' : '0';
+});
+document.addEventListener('mousemove', e => {
+    if (!isLocked || !gameActive) return;
+    yaw   -= e.movementX * sens;
+    pitch -= e.movementY * sens;
+    pitch  = Math.max(-1.3, Math.min(1.3, pitch));
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+});
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+// ── KEYBOARD INPUT (WASD) ──────────────────────────────────────
+document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(k)) {
+        keys[k] = true;
+        e.preventDefault();
+    }
+    if (k === 'shift') {
+        isCrouching = true;
+        e.preventDefault();
+    }
+    if (e.code === 'Space') {
+        if (gameActive && !isJumping && playerPos.y < 0.05) {
+            verticalVel = jumpForce;
+            isJumping = true;
+        }
+        e.preventDefault();
+    }
+    if (k === '1') {
+        switchWeapon('gun');
+        e.preventDefault();
+    }
+    if (k === '2') {
+        switchWeapon('knife');
+        e.preventDefault();
+    }
+    if (e.key === 'Escape') {
+        if (gameActive) {
+            document.exitPointerLock();
+            setSettingsVisible(true);
+            settingsPanel.style.display = 'flex';
+        }
+    }
+});
+document.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(k)) keys[k] = false;
+    if (k === 'shift') isCrouching = false;
+});
+
+function switchWeapon(weapon) {
+    if (!gameActive || isWeaponSwitching || currentWeapon === weapon) return;
+    isWeaponSwitching = true;
+    switchProgress = 0;
+    const nextWeapon = weapon;
+
+    setTimeout(() => {
+        currentWeapon = nextWeapon;
+        if (nextWeapon === 'gun') {
+            gunGroup.visible = true;
+            knifeGroup.visible = false;
+        } else {
+            gunGroup.visible = false;
+            knifeGroup.visible = true;
+        }
+    }, switchDuration / 2);
+}
+
+// ── RAYCASTING / SHOOT ─────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+let canShoot = true;
+
+document.addEventListener('mousedown', e => {
+    if (!gameActive || !isLocked || e.button !== 0) return;
+    if (isWeaponSwitching) return;
+
+    if (currentWeapon === 'knife') {
+        startSlash();  // 使用新的状态机系统
+    } else if (currentWeapon === 'gun') {
+        if (!canShoot) return;
+        canShoot = false;
+        setTimeout(() => canShoot = true, 80);
+        doShoot();
+    }
+});
+
+// ════════════════════════════════════════════════════════════
+// ─── 刀的核心动画函数 ──────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+
+function resetKnifePose() {
+    // 将刀重置到Idle位置（屏幕右下角，不挡中心）
+    knifeGroup.position.set(
+        knifeIdlePose.pos.x,
+        knifeIdlePose.pos.y,
+        knifeIdlePose.pos.z
+    );
+    knifeGroup.rotation.set(
+        knifeIdlePose.rot.x,
+        knifeIdlePose.rot.y,
+        knifeIdlePose.rot.z
+    );
+    slashState = 'idle';
+}
+
+function startSlash() {
+    // 检查冷却和状态
+    if (slashCooldown > 0) return;
+    if (isWeaponSwitching) return;
+    if (slashState !== 'idle') return;
+
+    // 初始化砍击
+    slashState = 'windup';
+    slashStartTime = performance.now();
+    hasHitThisSlash = false;
+    slashCooldown = slashCooldownDuration;
+
+    // 播放起手音效
+    playKnifeWindupSound();
+}
+
+function checkMeleeHit() {
+    // 在Slash阶段的80ms处执行判定
+    if (hasHitThisSlash) return;
+
+    let hitTarget = null;
+    let closestDist = 3;
+
+    targetObjs.forEach(target => {
+        const dist = target.position.distanceTo(camera.position);
+        if (dist >= 0.5 && dist < closestDist) {
+            closestDist = dist;
+            hitTarget = target;
+        }
+    });
+
+    if (hitTarget) {
+        hasHitThisSlash = true;
+        impactStartTime = performance.now();
+        slashState = 'impact';
+        hitStopTime = 50;
+        cameraShakeTime = cameraShakeDuration;
+        cameraShakeInitialPos.copy(camera.position);
+        registerHit(hitTarget, hitTarget.position);
+    }
+}
+
+function updateKnifeAnimation(currentTime) {
+    // 刀的完整动画逻辑：5个阶段的关键帧插值
+    const elapsed = currentTime - slashStartTime;
+
+    let pos = { x: 0, y: 0, z: 0 };
+    let rot = { x: 0, y: 0, z: 0 };
+    let progress = 0;
+
+    if (slashState === 'windup') {
+        // ─── Wind-up (0-80ms): 蓄力阶段 ───
+        // 刀向右下后撤，角度增大，制造紧张感
+        progress = Math.min(elapsed / slashAnimTimings.windupEnd, 1);
+        const eased = easeInQuad(progress);
+
+        pos.x = 0.45 + (0.55 - 0.45) * eased;
+        pos.y = -0.35 + (-0.42 - (-0.35)) * eased;
+        pos.z = -0.65;
+
+        rot.x = (5 * Math.PI / 180) + (10 * Math.PI / 180) * eased;
+        rot.y = 0;
+        rot.z = (-15 * Math.PI / 180) + (-20 * Math.PI / 180) * eased;
+
+        if (progress >= 1) {
+            slashState = 'slash';
+            slashStartTime = currentTime - slashAnimTimings.windupEnd;
+        }
+
+    } else if (slashState === 'slash') {
+        // ─── Slash (80-180ms): 挥出阶段 ───
+        // 快速从右下斜切到左上，完整的砍击轨迹
+        const slashElapsed = elapsed - slashAnimTimings.windupEnd;
+        progress = Math.min(slashElapsed / (slashAnimTimings.slashEnd - slashAnimTimings.windupEnd), 1);
+        const eased = easeOutCubic(progress);
+
+        // 在动画中途(~80ms)检查命中
+        if (slashElapsed >= 0 && slashElapsed < 16 && !hasHitThisSlash) {
+            checkMeleeHit();
+        }
+
+        pos.x = 0.55 + (-0.18 - 0.55) * eased;
+        pos.y = -0.42 + (-0.05 - (-0.42)) * eased;
+        pos.z = -0.65 + (-0.5 - (-0.65)) * eased;
+
+        rot.x = (15 * Math.PI / 180) + (-20 * Math.PI / 180) * eased;
+        rot.y = 0 + (-25 * Math.PI / 180) * eased;
+        rot.z = (-35 * Math.PI / 180) + (90 * Math.PI / 180) * eased;
+
+        if (progress >= 1) {
+            if (hasHitThisSlash) {
+                slashState = 'impact';
+            } else {
+                slashState = 'recovery';
+                slashStartTime = currentTime - slashAnimTimings.slashEnd;
+            }
+        }
+
+    } else if (slashState === 'impact') {
+        // ─── Impact (180-230ms): 命中停顿 ───
+        // 刀冻结在击中点，Hit Stop + 镜头抖动增强打击感
+        const impactElapsed = currentTime - impactStartTime;
+        if (impactElapsed >= slashAnimTimings.impactEnd - slashAnimTimings.slashEnd) {
+            slashState = 'recovery';
+            slashStartTime = currentTime - slashAnimTimings.slashEnd;
+        }
+        return;  // 保持当前位置
+
+    } else if (slashState === 'recovery') {
+        // ─── Recovery (230-420ms): 收刀阶段 ───
+        // 自然地回到Idle，比Slash慢，显得放松
+        const recoveryElapsed = elapsed - slashAnimTimings.slashEnd;
+        const recoveryDuration = slashAnimTimings.recoveryEnd - slashAnimTimings.slashEnd;
+        progress = Math.min(recoveryElapsed / recoveryDuration, 1);
+        const eased = easeInOutCubic(progress);
+
+        const slashEndPos = { x: -0.18, y: -0.05, z: -0.5 };
+        const slashEndRot = { x: -5 * Math.PI / 180, y: -25 * Math.PI / 180, z: 55 * Math.PI / 180 };
+
+        pos.x = slashEndPos.x + (knifeIdlePose.pos.x - slashEndPos.x) * eased;
+        pos.y = slashEndPos.y + (knifeIdlePose.pos.y - slashEndPos.y) * eased;
+        pos.z = slashEndPos.z + (knifeIdlePose.pos.z - slashEndPos.z) * eased;
+
+        rot.x = slashEndRot.x + (knifeIdlePose.rot.x - slashEndRot.x) * eased;
+        rot.y = slashEndRot.y + (knifeIdlePose.rot.y - slashEndRot.y) * eased;
+        rot.z = slashEndRot.z + (knifeIdlePose.rot.z - slashEndRot.z) * eased;
+
+        if (progress >= 1) {
+            resetKnifePose();
+            return;
+        }
+    }
+
+    knifeGroup.position.set(pos.x, pos.y, pos.z);
+    knifeGroup.rotation.set(rot.x, rot.y, rot.z);
+}
+
+function playKnifeWindupSound() {
+    // Wind-up的"嗖"声：从低到高的快速扫过
+    if (!actx) return;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.connect(g); g.connect(actx.destination);
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(2000, actx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(4000, actx.currentTime + 0.08);
+    g.gain.setValueAtTime(0.1, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.08);
+    o.start(); o.stop(actx.currentTime + 0.08);
+}
+
+function doShoot() {
+    playGunshot();
+    flashEffect();
+
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const hits = raycaster.intersectObjects(targetObjs);
+    if (hits.length > 0) {
+        registerHit(hits[0].object, hits[0].point);
+    } else {
+        registerMiss();
+    }
+}
+
+
+// ── HIT / MISS ──────────────────────────────────────────────────
+function registerHit(mesh, point) {
+    hitCount++;
+    streak++;
+    if (streak > maxStreak) maxStreak = streak;
+    const mult = Math.min(streak, 10);
+    const pts  = 100 * mult;
+    score += pts;
+
+    showHitMarker();
+    particles(point, mesh.material.color);
+    showScorePop(pts, mult);
+    killTarget(mesh);
+    updateHUD();
+    if (currentWeapon === 'knife') {
+        playKnifeHitSound();
+    } else {
+        playHitSound();
+    }
+}
+
+function registerMiss() {
+    missCount++;
+    streak = 0;
+    updateHUD();
+}
+
+// ── PARTICLES ──────────────────────────────────────────────────
+function particles(pos, color) {
+    const N = 14;
+    const geo = new THREE.BufferGeometry();
+    const arr = new Float32Array(N * 3);
+    const vels = [];
+    for (let i = 0; i < N; i++) {
+        arr[i*3]   = pos.x;
+        arr[i*3+1] = pos.y;
+        arr[i*3+2] = pos.z;
+        vels.push(new THREE.Vector3(
+            (Math.random()-.5)*.22,
+            (Math.random()-.5)*.22 + .07,
+            (Math.random()-.5)*.22
+        ));
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const mat = new THREE.PointsMaterial({ color, size: 0.05, transparent: true, opacity: 1 });
+    const pts = new THREE.Points(geo, mat);
+    scene.add(pts);
+
+    let life = 1;
+    (function tick() {
+        if (life <= 0) { scene.remove(pts); return; }
+        life -= 0.06;
+        mat.opacity = life;
+        const p = geo.attributes.position.array;
+        for (let i = 0; i < N; i++) {
+            p[i*3]   += vels[i].x;
+            p[i*3+1] += vels[i].y;
+            p[i*3+2] += vels[i].z;
+            vels[i].y -= 0.005;
+        }
+        geo.attributes.position.needsUpdate = true;
+        requestAnimationFrame(tick);
+    })();
+}
+
+// ── UI EFFECTS ─────────────────────────────────────────────────
+const flashEl     = document.getElementById('flash');
+const hitmarkerEl = document.getElementById('hitmarker');
+
+function flashEffect() {
+    flashEl.style.opacity = '1';
+    setTimeout(() => flashEl.style.opacity = '0', 45);
+    muzzleLight.intensity = 5;
+    setTimeout(() => muzzleLight.intensity = 0, 55);
+    // Gun kick
+    gunGroup.position.z = 0.06;
+    gunGroup.rotation.x = -0.08;
+    setTimeout(() => { gunGroup.position.z = 0; gunGroup.rotation.x = 0; }, 90);
+}
+
+function showHitMarker() {
+    hitmarkerEl.style.opacity = '1';
+    setTimeout(() => hitmarkerEl.style.opacity = '0', 180);
+}
+
+function showScorePop(pts, mult) {
+    const el = document.createElement('div');
+    el.className = 'score-pop';
+    el.style.left = '50%';
+    el.style.top  = '44%';
+    el.textContent = '+' + pts + (mult > 1 ? ' ×' + mult : '');
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 700);
+}
+
+// ── AUDIO (Web Audio API) ──────────────────────────────────────
+let actx;
+function initAudio() {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playGunshot() {
+    if (!actx) return;
+    const sr  = actx.sampleRate;
+    const len = Math.floor(sr * 0.09);
+    const buf = actx.createBuffer(1, len, sr);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random()*2-1) * Math.exp(-i / (sr*0.022));
+
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+
+    const lp = actx.createBiquadFilter();
+    lp.type  = 'lowpass';
+    lp.frequency.value = 900;
+
+    const g = actx.createGain();
+    g.gain.value = 0.45;
+
+    src.connect(lp); lp.connect(g); g.connect(actx.destination);
+    src.start();
+}
+
+function playHitSound() {
+    if (!actx) return;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.connect(g); g.connect(actx.destination);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(1400, actx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(700, actx.currentTime + 0.07);
+    g.gain.setValueAtTime(0.18, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.07);
+    o.start(); o.stop(actx.currentTime + 0.07);
+}
+
+function playKnifeSound() {
+    if (!actx) return;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.connect(g); g.connect(actx.destination);
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(3200, actx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(1200, actx.currentTime + 0.1);
+    g.gain.setValueAtTime(0.2, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.1);
+    o.start(); o.stop(actx.currentTime + 0.1);
+}
+
+function playKnifeHitSound() {
+    if (!actx) return;
+    // High frequency impact
+    const o1 = actx.createOscillator();
+    const g1 = actx.createGain();
+    o1.connect(g1); g1.connect(actx.destination);
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(4000, actx.currentTime);
+    o1.frequency.exponentialRampToValueAtTime(2000, actx.currentTime + 0.08);
+    g1.gain.setValueAtTime(0.12, actx.currentTime);
+    g1.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.08);
+    o1.start(); o1.stop(actx.currentTime + 0.08);
+
+    // Low frequency resonance
+    const o2 = actx.createOscillator();
+    const g2 = actx.createGain();
+    o2.connect(g2); g2.connect(actx.destination);
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(800, actx.currentTime);
+    o2.frequency.exponentialRampToValueAtTime(400, actx.currentTime + 0.15);
+    g2.gain.setValueAtTime(0.08, actx.currentTime);
+    g2.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.15);
+    o2.start(); o2.stop(actx.currentTime + 0.15);
+}
+
+// ── GAME STATE ─────────────────────────────────────────────────
+let gameActive = false;
+let score = 0, hitCount = 0, missCount = 0, streak = 0, maxStreak = 0;
+let timeLeft = 60;
+let timer = null;
+let currentMode = 'normal';
+
+const SPAWN_COUNT = { normal: 3, small: 4, moving: 3, flick: 1 };
+
+function startGame() {
+    score = hitCount = missCount = streak = maxStreak = 0;
+    timeLeft = 60;
+    gameActive = true;
+
+    // 重置玩家位置
+    playerPos.set(0, 0, 0);
+    playerVel.set(0, 0, 0);
+    verticalVel = 0;
+    isJumping = false;
+    yaw = 0;
+    pitch = 0;
+    isCrouching = false;
+    currentEyeHeight = eyeHeightStand;
+
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('result-grid').style.display = 'none';
+    lockNotice.style.opacity = '1';
+    setSettingsVisible(true);
+    clearTargets();
+
+    const n = SPAWN_COUNT[currentMode] || 3;
+    for (let i = 0; i < n; i++) spawnTarget();
+    updateHUD();
+
+    timer = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer-val').textContent = timeLeft;
+        if (timeLeft <= 10) document.getElementById('timer-val').style.color = '#ff2233';
+        if (timeLeft <= 0) endGame();
+    }, 1000);
+
+    renderer.domElement.requestPointerLock();
+}
+
+function endGame() {
+    clearInterval(timer);
+    gameActive = false;
+    clearTargets();
+    document.exitPointerLock();
+    lockNotice.style.opacity = '0';
+    setSettingsVisible(false);
+
+    const acc = (hitCount + missCount) > 0
+        ? Math.round(hitCount / (hitCount + missCount) * 100) : 0;
+
+    document.getElementById('r-score').textContent  = score;
+    document.getElementById('r-acc').textContent    = acc + '%';
+    document.getElementById('r-hits').textContent   = hitCount;
+    document.getElementById('r-streak').textContent = maxStreak;
+    document.getElementById('result-grid').style.display = 'grid';
+
+    document.getElementById('play-btn').textContent = '再来一局';
+    document.getElementById('overlay').style.display = 'flex';
+    document.getElementById('timer-val').style.color = '#ff4655';
+}
+
+function updateHUD() {
+    document.getElementById('score-val').textContent  = score;
+    document.getElementById('streak-val').textContent = streak;
+    const total = hitCount + missCount;
+    document.getElementById('acc-val').textContent =
+        total > 0 ? Math.round(hitCount/total*100) + '%' : '--%';
+}
+
+// ── EASING FUNCTIONS ──────────────────────────────────────────
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function easeOutQuad(t) {
+    return 1 - (1 - t) * (1 - t);
+}
+
+function easeInQuad(t) {
+    return t * t;
+}
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// ── ANIMATION LOOP ─────────────────────────────────────────────
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (gameActive) {
+        // 玩家移动
+        const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        const speed = isCrouching ? playerSpeed * 0.5 : playerSpeed;
+
+        playerVel.set(0, 0, 0);
+        if (keys['w']) playerVel.add(forward.clone().multiplyScalar(speed));
+        if (keys['s']) playerVel.add(forward.clone().multiplyScalar(-speed));
+        if (keys['d']) playerVel.add(right.clone().multiplyScalar(speed));
+        if (keys['a']) playerVel.add(right.clone().multiplyScalar(-speed));
+
+        playerPos.add(playerVel);
+
+        // 重力和跳跃 (非对称重力: 上升快, 下降慢)
+        const currentGravity = verticalVel > 0 ? gravityUp : gravityDown;
+        verticalVel -= currentGravity;
+        playerPos.y += verticalVel;
+        if (playerPos.y <= 0) {
+            playerPos.y = 0;
+            verticalVel = 0;
+            isJumping = false;
+        }
+
+        // 碰撞边界 (防止跑出地图)
+        playerPos.x = Math.max(-28, Math.min(28, playerPos.x));
+        playerPos.z = Math.max(-48, Math.min(5, playerPos.z));
+
+        // 蹲下动画 (平滑过渡)
+        const targetEyeHeight = isCrouching ? eyeHeightCrouch : eyeHeightStand;
+        currentEyeHeight += (targetEyeHeight - currentEyeHeight) * crouchSpeed;
+
+        // 更新相机位置
+        camera.position.copy(playerPos).add(new THREE.Vector3(0, currentEyeHeight, 0));
+
+        // 移动靶模式
+        if (currentMode === 'moving') {
+            targetObjs.forEach(m => {
+                m.position.x += m.userData.vx;
+                m.position.y += m.userData.vy;
+                if (Math.abs(m.position.x) > 10) m.userData.vx *= -1;
+                if (m.position.y < 0.4 || m.position.y > 4.5) m.userData.vy *= -1;
+            });
+        }
+    }
+
+    // ─── Hit Stop 效果 ───
+    // 命中时短暂冻结游戏逻辑，增强打击感
+    if (hitStopTime > 0) {
+        hitStopTime--;
+    }
+
+    // ─── 镜头震动（命中反馈） ───
+    // 命中时镜头随机偏移，显示力度反馈
+    if (cameraShakeTime > 0) {
+        const shakeProgress = 1 - (cameraShakeTime / cameraShakeDuration);
+        const shakeAmount = cameraShakeIntensity * (1 - shakeProgress);
+        camera.position.copy(cameraShakeInitialPos);
+        camera.position.x += (Math.random() - 0.5) * shakeAmount * 2;
+        camera.position.y += (Math.random() - 0.5) * shakeAmount * 2;
+        camera.position.z += (Math.random() - 0.5) * shakeAmount * 2;
+        cameraShakeTime--;
+    }
+
+    // ─── 武器切换动画 ───
+    if (isWeaponSwitching) {
+        switchProgress += 16.67 / switchDuration;
+        const progress = Math.min(switchProgress, 1);
+
+        if (currentWeapon === 'gun') {
+            gunGroup.scale.set(progress, progress, progress);
+            knifeGroup.scale.set(1 - progress, 1 - progress, 1 - progress);
+        } else {
+            knifeGroup.scale.set(progress, progress, progress);
+            gunGroup.scale.set(1 - progress, 1 - progress, 1 - progress);
+        }
+
+        if (progress >= 1) {
+            isWeaponSwitching = false;
+            gunGroup.scale.set(1, 1, 1);
+            knifeGroup.scale.set(1, 1, 1);
+        }
+    }
+
+    // ─── 新的刀动画系统：完整的5阶段状态机 ───
+    // Idle → Wind-up → Slash → Impact → Recovery → Idle
+    if (currentWeapon === 'knife' && slashState !== 'idle') {
+        const currentTime = performance.now();
+        updateKnifeAnimation(currentTime);
+    } else if (currentWeapon === 'knife' && slashState === 'idle') {
+        // 在Idle状态下保持待机位置
+        resetKnifePose();
+    }
+
+    // 刀的冷却计时（每帧递减）
+    if (slashCooldown > 0) {
+        slashCooldown--;
+    }
+
+    renderer.render(scene, camera);
+}
+animate();
+
+// ── SENSITIVITY & SETTINGS ────────────────────────────────────
+const sensSlider   = document.getElementById('sens-slider');
+const sensDisplay  = document.getElementById('sens-display');
+const sensSliderIg = document.getElementById('sens-slider-ig');
+const sensDisplayIg= document.getElementById('sens-display-ig');
+const fovSliderIg  = document.getElementById('fov-slider-ig');
+const fovDisplayIg = document.getElementById('fov-display-ig');
+const settingsBtn  = document.getElementById('settings-btn');
+const settingsPanel= document.getElementById('settings-panel');
+
+function applySens(val) {
+    sens = val * 0.00554;
+    sensSlider.value    = val;
+    sensSliderIg.value  = val;
+    sensDisplay.textContent   = parseFloat(val).toFixed(2);
+    sensDisplayIg.textContent = parseFloat(val).toFixed(2);
+}
+
+sensSlider.addEventListener('input', () => applySens(+sensSlider.value));
+sensSliderIg.addEventListener('input', () => applySens(+sensSliderIg.value));
+
+fovSliderIg.addEventListener('input', () => {
+    const v = +fovSliderIg.value;
+    fovDisplayIg.textContent = v + '°';
+    camera.fov = v;
+    camera.updateProjectionMatrix();
+});
+
+// Preset buttons
+document.querySelectorAll('.sp-presets button').forEach(btn => {
+    btn.addEventListener('click', () => applySens(+btn.dataset.sens));
+});
+
+// Gear toggle
+settingsBtn.addEventListener('click', () => {
+    const open = settingsPanel.style.display === 'flex';
+    settingsPanel.style.display = open ? 'none' : 'flex';
+});
+document.getElementById('sp-close').addEventListener('click', () => {
+    settingsPanel.style.display = 'none';
+});
+
+// Hide panel when pointer gets re-locked
+document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === renderer.domElement) {
+        settingsPanel.style.display = 'none';
+    }
+});
+
+// Show/hide gear based on game state (injected into startGame/endGame)
+function setSettingsVisible(v) {
+    settingsBtn.style.display = v ? 'flex' : 'none';
+    if (!v) settingsPanel.style.display = 'none';
+}
+
+// ── CONTROLS ───────────────────────────────────────────────────
+document.getElementById('play-btn').addEventListener('click', () => {
+    if (!actx) initAudio();
+    startGame();
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentMode = btn.dataset.mode;
+    });
+});
+</script>
+</body>
+</html>
